@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>PrintGrid Studio — Cuadrículas de Impresión 300 DPI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Inter', system-ui, -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
+    body { background-color: #0b1120; color: #f1f5f9; overscroll-behavior-y: contain; }
+    input[type="range"] { accent-color: #38bdf8; }
+    .checkerboard {
+      background-color: #1e293b;
+      background-image: linear-gradient(45deg, #0f172a 25%, transparent 25%),
+        linear-gradient(-45deg, #0f172a 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #0f172a 75%),
+        linear-gradient(-45deg, transparent 75%, #0f172a 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    @media print {
+      body * { visibility: hidden !important; }
+      #print-area, #print-area * { visibility: visible !important; }
+      #print-area { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; background: white; }
+      #print-area img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    }
+  </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden select-none">
+
+  <!-- Barra Superior -->
+  <header class="h-14 bg-slate-900/95 border-b border-slate-800 px-4 flex items-center justify-between shrink-0 z-20">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
+        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2.3" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+          <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+          <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-sm font-bold tracking-tight text-white leading-none">PrintGrid Studio</h1>
+        <p id="header-subtitle" class="text-[11px] text-slate-400 mt-0.5">Sin imagen cargada · Listo a 300 DPI</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <label class="cursor-pointer bg-sky-500 hover:bg-sky-400 active:scale-95 transition text-slate-950 font-semibold text-xs px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-md shadow-sky-500/20">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+        </svg>
+        <span>Subir Imagen</span>
+        <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp" class="hidden" />
+      </label>
+    </div>
+  </header>
+
+  <!-- Cuerpo Principal -->
+  <main class="flex-1 flex flex-col lg:flex-row overflow-hidden">
+
+    <!-- Área de Vista Previa -->
+    <section class="flex-1 relative checkerboard flex flex-col overflow-hidden">
+      <div class="absolute top-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 z-10 pointer-events-none">
+        <div class="pointer-events-auto bg-slate-900/90 backdrop-blur border border-slate-700/80 rounded-xl px-3 py-1.5 shadow-lg flex items-center gap-3 text-xs">
+          <div>
+            <span class="text-slate-400 block text-[10px] uppercase tracking-wider">Cada copia</span>
+            <span id="cell-physical-size" class="font-bold text-sky-400">— × — cm</span>
+          </div>
+          <div class="h-6 w-px bg-slate-700"></div>
+          <div>
+            <span class="text-slate-400 block text-[10px] uppercase tracking-wider">Total</span>
+            <span id="total-copies-badge" class="font-semibold text-white">4 copias</span>
+          </div>
+          <div class="h-6 w-px bg-slate-700 hidden sm:block"></div>
+          <div class="hidden sm:block">
+            <span class="text-slate-400 block text-[10px] uppercase tracking-wider">Calidad real</span>
+            <span id="effective-dpi-badge" class="font-semibold text-emerald-400">— DPI</span>
+          </div>
+        </div>
+
+        <div class="pointer-events-auto bg-slate-900/90 backdrop-blur border border-slate-700/80 rounded-xl p-1 shadow-lg flex items-center gap-1">
+          <button id="zoom-out" class="w-7 h-7 rounded-lg hover:bg-slate-800 text-slate-300 flex items-center justify-center font-bold">−</button>
+          <span id="zoom-label" class="text-xs font-mono px-1.5 text-slate-200">100%</span>
+          <button id="zoom-in" class="w-7 h-7 rounded-lg hover:bg-slate-800 text-slate-300 flex items-center justify-center font-bold">+</button>
+          <button id="zoom-fit" class="px-2 h-7 rounded-lg hover:bg-slate-800 text-[11px] font-medium text-sky-400">Ajustar</button>
+        </div>
+      </div>
+
+      <div id="canvas-viewport" class="flex-1 overflow-auto flex items-center justify-center p-6 pt-16 pb-6">
+        <div id="paper-shadow-wrapper" class="transition-transform duration-150 origin-center shadow-2xl shadow-black/70 ring-1 ring-white/10">
+          <canvas id="preview-canvas" class="block bg-white"></canvas>
+        </div>
+      </div>
+
+      <div id="smart-tip" class="hidden absolute bottom-3 left-3 right-3 mx-auto max-w-md bg-indigo-950/95 border border-indigo-500/40 text-indigo-100 text-xs px-3.5 py-2.5 rounded-xl shadow-xl flex items-center justify-between gap-3 z-10">
+        <span id="smart-tip-text">Sugerencia inteligente</span>
+        <button id="smart-tip-apply" class="shrink-0 bg-indigo-500 hover:bg-indigo-400 text-white font-semibold px-2.5 py-1 rounded-lg text-[11px]">Aplicar</button>
+      </div>
+    </section>
+
+    <!-- Panel de Controles -->
+    <aside class="w-full lg:w-96 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col shrink-0 max-h-[48vh] lg:max-h-none">
+      <div class="grid grid-cols-4 border-b border-slate-800 bg-slate-950/50 text-xs font-medium shrink-0">
+        <button data-tab="grid" class="tab-btn py-3 text-sky-400 border-b-2 border-sky-400 flex flex-col items-center gap-1"><span>Cuadrícula</span></button>
+        <button data-tab="cell" class="tab-btn py-3 text-slate-400 hover:text-slate-200 flex flex-col items-center gap-1"><span>Ajuste</span></button>
+        <button data-tab="paper" class="tab-btn py-3 text-slate-400 hover:text-slate-200 flex flex-col items-center gap-1"><span>Papel</span></button>
+        <button data-tab="export" class="tab-btn py-3 text-slate-400 hover:text-slate-200 flex flex-col items-center gap-1"><span>Exportar</span></button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4 space-y-5 no-scrollbar">
+        <!-- TAB 1: CUADRÍCULA -->
+        <div id="tab-grid" class="tab-panel space-y-4">
+          <div>
+            <label class="text-xs font-semibold text-slate-300 uppercase tracking-wider block mb-2.5">Disposiciones Rápidas</label>
+            <div id="presets-grid" class="grid grid-cols-4 gap-2"></div>
+          </div>
+
+          <div class="bg-slate-800/50 border border-slate-700/60 rounded-xl p-3 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-slate-200">Cuadrícula Personalizada</span>
+              <span id="custom-grid-summary" class="text-[11px] text-sky-400 font-mono">2 × 2</span>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <div class="flex justify-between text-[11px] text-slate-400 mb-1"><span>Filas</span><span id="rows-val" class="text-white font-semibold">2</span></div>
+                <input id="rows-input" type="range" min="1" max="10" value="2" class="w-full" />
+              </div>
+              <div>
+                <div class="flex justify-between text-[11px] text-slate-400 mb-1"><span>Columnas</span><span id="cols-val" class="text-white font-semibold">2</span></div>
+                <input id="cols-input" type="range" min="1" max="10" value="2" class="w-full" />
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-slate-800/50 border border-slate-700/60 rounded-xl p-3 space-y-3">
+            <span class="text-xs font-semibold text-slate-200 block">Márgenes y Guías de Corte</span>
+            <div>
+              <div class="flex justify-between text-[11px] text-slate-400 mb-1"><span>Margen exterior hoja</span><span id="margin-val" class="text-white font-mono">8 mm</span></div>
+              <input id="margin-input" type="range" min="0" max="30" step="1" value="8" class="w-full" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] text-slate-400 mb-1"><span>Separación entre copias</span><span id="gap-val" class="text-white font-mono">4 mm</span></div>
+              <input id="gap-input" type="range" min="0" max="20" step="1" value="4" class="w-full" />
+            </div>
+            <div class="flex items-center justify-between pt-1">
+              <span class="text-xs text-slate-300">Líneas guía de corte</span>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input id="cutlines-toggle" type="checkbox" checked class="sr-only peer">
+                <div class="w-9 h-5 bg-slate-700 rounded-full peer peer-checked:bg-sky-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: AJUSTE EN CELDA -->
+        <div id="tab-cell" class="tab-panel hidden space-y-4">
+          <div>
+            <label class="text-xs font-semibold text-slate-300 uppercase tracking-wider block mb-2">Modo de Encaje en Celda</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button id="fit-contain" class="fit-btn bg-sky-500/20 border border-sky-400 text-sky-300 rounded-xl p-3 text-left transition">
+                <div class="text-xs font-bold">Ajustar completo</div>
+                <div class="text-[11px] opacity-80 mt-0.5">Contain · Sin recortar bordes</div>
+              </button>
+              <button id="fit-cover" class="fit-btn bg-slate-800/70 border border-slate-700 text-slate-300 rounded-xl p-3 text-left transition">
+                <div class="text-xs font-bold">Rellenar celda</div>
+                <div class="text-[11px] opacity-80 mt-0.5">Cover · Aprovecha 100% área</div>
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-slate-800/50 border border-slate-700/60 rounded-xl p-3 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-slate-200">Rotación dentro de celda</span>
+              <button id="rotate-cell-btn" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                <span>Rotar 90° (<span id="rotation-label">0°</span>)</span>
+              </button>
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] text-slate-400 mb-1"><span>Escala interna de imagen</span><span id="scale-val" class="text-white font-mono">100%</span></div>
+              <input id="scale-input" type="range" min="50" max="100" step="1" value="100" class="w-full" />
+            </div>
+          </div>
+
+          <div class="bg-slate-800/50 border border-slate-700/60 rounded-xl p-3 flex items-center justify-between">
+            <div>
+              <span class="text-xs font-semibold text-slate-200 block">Color de fondo de hoja</span>
+              <span class="text-[11px] text-slate-400">Útil para etiquetas o bordes</span>
+            </div>
+            <input id="bg-color-input" type="color" value="#ffffff" class="w-10 h-9 rounded-lg bg-transparent border border-slate-600 cursor-pointer" />
+          </div>
+        </div>
+
+        <!-- TAB 3: PAPEL -->
+        <div id="tab-paper" class="tab-panel hidden space-y-4">
+          <div>
+            <label class="text-xs font-semibold text-slate-300 uppercase tracking-wider block mb-2">Formato de Hoja</label>
+            <select id="paper-size-select" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-sky-400">
+              <option value="a4" selected>A4 (210 × 297 mm)</option>
+              <option value="letter">Carta / Letter (215.9 × 279.4 mm)</option>
+              <option value="legal">Oficio / Legal (215.9 × 355.6 mm)</option>
+              <option value="a3">A3 (297 × 420 mm)</option>
+              <option value="a5">A5 (148 × 210 mm)</option>
+              <option value="custom">Personalizado (mm)</option>
+            </select>
+          </div>
+
+          <div id="custom-paper-box" class="hidden grid grid-cols-2 gap-3 bg-slate-800/60 border border-slate-700 p-3 rounded-xl">
+            <div>
+              <label class="text-[11px] text-slate-400 block mb-1">Ancho (mm)</label>
+              <input id="custom-w-input" type="number" min="30" max="1200" step="0.1" value="210" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white" />
+            </div>
+            <div>
+              <label class="text-[11px] text-slate-400 block mb-1">Alto (mm)</label>
+              <input id="custom-h-input" type="number" min="30" max="1200" step="0.1" value="297" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white" />
+            </div>
+          </div>
+
+          <div>
+            <label class="text-xs font-semibold text-slate-300 uppercase tracking-wider block mb-2">Orientación de la Hoja</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button id="orient-portrait" class="orient-btn bg-sky-500/20 border border-sky-400 text-sky-300 rounded-xl p-2.5 text-xs font-semibold">Vertical (Portrait)</button>
+              <button id="orient-landscape" class="orient-btn bg-slate-800/70 border border-slate-700 text-slate-300 rounded-xl p-2.5 text-xs font-semibold">Horizontal (Landscape)</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: EXPORTAR -->
+        <div id="tab-export" class="tab-panel hidden space-y-3">
+          <div class="bg-slate-800/50 border border-slate-700/60 rounded-xl p-3 text-xs text-slate-300 space-y-1">
+            <div class="flex justify-between"><span class="text-slate-400">Dimensiones hoja:</span><span id="summary-paper" class="font-mono text-white">210 × 297 mm</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Resolución raster:</span><span id="summary-px" class="font-mono text-white">2480 × 3508 px (300 DPI)</span></div>
+          </div>
+
+          <button id="export-pdf-btn" class="w-full bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold py-3 px-4 rounded-xl shadow-lg shadow-sky-500/20 flex items-center justify-center gap-2 text-sm active:scale-[0.99] transition">
+            <span>Descargar PDF Exacto (mm)</span>
+          </button>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button id="export-png-btn" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-medium py-2.5 px-3 rounded-xl text-xs">PNG 300 DPI</button>
+            <button id="export-jpg-btn" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-medium py-2.5 px-3 rounded-xl text-xs">JPG 300 DPI</button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 pt-1">
+            <button id="share-btn" class="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 font-medium py-2.5 px-3 rounded-xl text-xs">Compartir PDF</button>
+            <button id="print-btn" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-medium py-2.5 px-3 rounded-xl text-xs">Imprimir Directo</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <div id="print-area" class="hidden"><img id="print-img" alt="Hoja de impresión" /></div>
+
+  <script>
+    const PAPER_SIZES = {
+      a4: { w: 210, h: 297, name: 'A4' },
+      letter: { w: 215.9, h: 279.4, name: 'Carta' },
+      legal: { w: 215.9, h: 355.6, name: 'Oficio' },
+      a3: { w: 297, h: 420, name: 'A3' },
+      a5: { w: 148, h: 210, name: 'A5' },
+      custom: { w: 210, h: 297, name: 'Personalizado' }
+    };
+
+    const PRESETS = [
+      { r: 1, c: 1, label: '1×1' }, { r: 1, c: 2, label: '1×2' },
+      { r: 2, c: 1, label: '2×1' }, { r: 2, c: 2, label: '2×2' },
+      { r: 2, c: 3, label: '2×3' }, { r: 3, c: 2, label: '3×2' },
+      { r: 3, c: 3, label: '3×3' }, { r: 4, c: 3, label: '4×3' }
+    ];
+
+    const state = {
+      img: null, imgName: 'diseno', naturalW: 0, naturalH: 0,
+      paperKey: 'a4', customW: 210, customH: 297, orientation: 'portrait',
+      rows: 2, cols: 2, marginMm: 8, gapMm: 4, cutLines: true,
+      fitMode: 'contain', cellRotation: 0, innerScale: 100, bgColor: '#ffffff',
+      zoom: 1, pendingSuggestion: null
+    };
+
+    const MM_TO_INCH = 1 / 25.4;
+    const DPI = 300;
+    const canvas = document.getElementById('preview-canvas');
+
+    function getPaperDimensionsMm() {
+      let base = state.paperKey === 'custom' ? { w: state.customW, h: state.customH } : PAPER_SIZES[state.paperKey];
+      return state.orientation === 'portrait'
+        ? { w: Math.min(base.w, base.h), h: Math.max(base.w, base.h) }
+        : { w: Math.max(base.w, base.h), h: Math.min(base.w, base.h) };
+    }
+
+    function computeLayoutMetrics() {
+      const paper = getPaperDimensionsMm();
+      const usableW = Math.max(1, paper.w - 2 * state.marginMm - (state.cols - 1) * state.gapMm);
+      const usableH = Math.max(1, paper.h - 2 * state.marginMm - (state.rows - 1) * state.gapMm);
+      const cellW = usableW / state.cols;
+      const cellH = usableH / state.rows;
+      return { paper, cellW, cellH };
+    }
+
+    function renderSheet(targetCanvas, targetDpi = 150) {
+      const { paper, cellW, cellH } = computeLayoutMetrics();
+      const pxPerMm = targetDpi * MM_TO_INCH;
+      const totalPxW = Math.round(paper.w * pxPerMm);
+      const totalPxH = Math.round(paper.h * pxPerMm);
+
+      targetCanvas.width = totalPxW;
+      targetCanvas.height = totalPxH;
+      const tCtx = targetCanvas.getContext('2d');
+
+      tCtx.fillStyle = state.bgColor;
+      tCtx.fillRect(0, 0, totalPxW, totalPxH);
+
+      const marginPx = state.marginMm * pxPerMm;
+      const gapPx = state.gapMm * pxPerMm;
+      const cellWPx = cellW * pxPerMm;
+      const cellHPx = cellH * pxPerMm;
+
+      for (let r = 0; r < state.rows; r++) {
+        for (let c = 0; c < state.cols; c++) {
+          const x = marginPx + c * (cellWPx + gapPx);
+          const y = marginPx + r * (cellHPx + gapPx);
+
+          if (state.img) {
+            tCtx.save();
+            tCtx.beginPath();
+            tCtx.rect(x, y, cellWPx, cellHPx);
+            tCtx.clip();
+
+            const centerX = x + cellWPx / 2;
+            const centerY = y + cellHPx / 2;
+            tCtx.translate(centerX, centerY);
+            tCtx.rotate((state.cellRotation * Math.PI) / 180);
+
+            const isRotated = state.cellRotation % 180 !== 0;
+            const availW = (isRotated ? cellHPx : cellWPx) * (state.innerScale / 100);
+            const availH = (isRotated ? cellWPx : cellHPx) * (state.innerScale / 100);
+
+            const imgRatio = state.naturalW / state.naturalH;
+            const boxRatio = availW / availH;
+            let drawW, drawH;
+
+            if (state.fitMode === 'contain') {
+              if (imgRatio > boxRatio) { drawW = availW; drawH = availW / imgRatio; }
+              else { drawH = availH; drawW = availH * imgRatio; }
+            } else {
+              if (imgRatio > boxRatio) { drawH = availH; drawW = availH * imgRatio; }
+              else { drawW = availW; drawH = availW / imgRatio; }
+            }
+
+            tCtx.drawImage(state.img, -drawW / 2, -drawH / 2, drawW, drawH);
+            tCtx.restore();
+          } else {
+            tCtx.fillStyle = '#f8fafc';
+            tCtx.fillRect(x, y, cellWPx, cellHPx);
+            tCtx.strokeStyle = '#cbd5e1';
+            tCtx.lineWidth = Math.max(1, pxPerMm * 0.25);
+            tCtx.strokeRect(x, y, cellWPx, cellHPx);
+          }
+
+          if (state.cutLines) {
+            tCtx.save();
+            tCtx.strokeStyle = '#94a3b8';
+            tCtx.lineWidth = Math.max(1, pxPerMm * 0.2);
+            tCtx.setLineDash([pxPerMm * 1.5, pxPerMm * 1.5]);
+            tCtx.strokeRect(x, y, cellWPx, cellHPx);
+            tCtx.restore();
+          }
+        }
+      }
+      return { paper, cellW, cellH, totalPxW, totalPxH };
+    }
+
+    function updateUI() {
+      const { paper, cellW, cellH } = renderSheet(canvas, 150);
+      const viewport = document.getElementById('canvas-viewport');
+      const maxW = viewport.clientWidth - 48;
+      const maxH = viewport.clientHeight - 84;
+      const baseScale = Math.min(maxW / canvas.width, maxH / canvas.height, 1);
+      canvas.style.width = `${Math.round(canvas.width * baseScale * state.zoom)}px`;
+      canvas.style.height = `${Math.round(canvas.height * baseScale * state.zoom)}px`;
+
+      document.getElementById('cell-physical-size').textContent = `${(cellW / 10).toFixed(2)} × ${(cellH / 10).toFixed(2)} cm`;
+      document.getElementById('total-copies-badge').textContent = `${state.rows * state.cols} copia${state.rows * state.cols > 1 ? 's' : ''}`;
+      document.getElementById('custom-grid-summary').textContent = `${state.rows} × ${state.cols}`;
+      document.getElementById('summary-paper').textContent = `${paper.w} × ${paper.h} mm`;
+      document.getElementById('summary-px').textContent = `${Math.round(paper.w * MM_TO_INCH * DPI)} × ${Math.round(paper.h * MM_TO_INCH * DPI)} px (300 DPI)`;
+
+      if (state.img) {
+        const effDpi = Math.round(state.naturalW / ((state.cellRotation % 180 !== 0 ? cellH : cellW) * MM_TO_INCH));
+        const dpiBadge = document.getElementById('effective-dpi-badge');
+        dpiBadge.textContent = `${effDpi} DPI`;
+        dpiBadge.className = effDpi >= 250 ? 'font-semibold text-emerald-400' : effDpi >= 150 ? 'font-semibold text-amber-400' : 'font-semibold text-rose-400';
+      }
+    }
+
+    function buildPresets() {
+      const container = document.getElementById('presets-grid');
+      container.innerHTML = '';
+      PRESETS.forEach(p => {
+        const btn = document.createElement('button');
+        const active = state.rows === p.r && state.cols === p.c;
+        btn.className = `p-2 rounded-xl border text-center transition ${active ? 'bg-sky-500/20 border-sky-400 text-sky-300' : 'bg-slate-800/70 border-slate-700 text-slate-300 hover:border-slate-500'}`;
+        btn.innerHTML = `<div class="text-xs font-bold">${p.label}</div><div class="text-[10px] opacity-75">${p.r * p.c} cop.</div>`;
+        btn.onclick = () => {
+          state.rows = p.r; state.cols = p.c;
+          document.getElementById('rows-input').value = p.r;
+          document.getElementById('cols-input').value = p.c;
+          document.getElementById('rows-val').textContent = p.r;
+          document.getElementById('cols-val').textContent = p.c;
+          buildPresets(); updateUI();
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    document.getElementById('file-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      state.imgName = file.name.replace(/\.[^/.]+$/, '');
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const image = new Image();
+        image.onload = () => {
+          state.img = image;
+          state.naturalW = image.naturalWidth;
+          state.naturalH = image.naturalHeight;
+          document.getElementById('header-subtitle').textContent = `${state.naturalW}×${state.naturalH} px · Listo a 300 DPI`;
+
+          const imgLandscape = state.naturalW > state.naturalH;
+          const { cellW, cellH } = computeLayoutMetrics();
+          const cellLandscape = cellW > cellH;
+          if (imgLandscape !== cellLandscape) {
+            const tip = document.getElementById('smart-tip');
+            document.getElementById('smart-tip-text').textContent = imgLandscape
+              ? 'Imagen horizontal detectada: girar celdas 90° maximiza el tamaño.'
+              : 'Imagen vertical detectada: girar celdas 90° maximiza el tamaño.';
+            tip.classList.remove('hidden');
+            state.pendingSuggestion = () => {
+              state.cellRotation = (state.cellRotation + 90) % 360;
+              document.getElementById('rotation-label').textContent = `${state.cellRotation}°`;
+              tip.classList.add('hidden');
+              updateUI();
+            };
+          }
+          updateUI();
+        };
+        image.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    document.getElementById('smart-tip-apply').onclick = () => { if (state.pendingSuggestion) state.pendingSuggestion(); };
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('text-sky-400', 'border-b-2', 'border-sky-400'); b.classList.add('text-slate-400'); });
+        btn.classList.add('text-sky-400', 'border-b-2', 'border-sky-400'); btn.classList.remove('text-slate-400');
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+        document.getElementById(`tab-${btn.dataset.tab}`).classList.remove('hidden');
+      };
+    });
+
+    ['rows', 'cols'].forEach(key => {
+      document.getElementById(`${key}-input`).oninput = (e) => {
+        state[key] = parseInt(e.target.value, 10);
+        document.getElementById(`${key}-val`).textContent = state[key];
+        buildPresets(); updateUI();
+      };
+    });
+
+    document.getElementById('margin-input').oninput = (e) => { state.marginMm = parseInt(e.target.value, 10); document.getElementById('margin-val').textContent = `${state.marginMm} mm`; updateUI(); };
+    document.getElementById('gap-input').oninput = (e) => { state.gapMm = parseInt(e.target.value, 10); document.getElementById('gap-val').textContent = `${state.gapMm} mm`; updateUI(); };
+    document.getElementById('cutlines-toggle').onchange = (e) => { state.cutLines = e.target.checked; updateUI(); };
+
+    document.getElementById('fit-contain').onclick = () => { state.fitMode = 'contain'; updateFitButtons(); updateUI(); };
+    document.getElementById('fit-cover').onclick = () => { state.fitMode = 'cover'; updateFitButtons(); updateUI(); };
+    function updateFitButtons() {
+      const cBtn = document.getElementById('fit-contain'), vBtn = document.getElementById('fit-cover');
+      cBtn.className = state.fitMode === 'contain' ? 'fit-btn bg-sky-500/20 border border-sky-400 text-sky-300 rounded-xl p-3 text-left' : 'fit-btn bg-slate-800/70 border border-slate-700 text-slate-300 rounded-xl p-3 text-left';
+      vBtn.className = state.fitMode === 'cover' ? 'fit-btn bg-sky-500/20 border border-sky-400 text-sky-300 rounded-xl p-3 text-left' : 'fit-btn bg-slate-800/70 border border-slate-700 text-slate-300 rounded-xl p-3 text-left';
+    }
+
+    document.getElementById('rotate-cell-btn').onclick = () => {
+      state.cellRotation = (state.cellRotation + 90) % 360;
+      document.getElementById('rotation-label').textContent = `${state.cellRotation}°`;
+      updateUI();
+    };
+    document.getElementById('scale-input').oninput = (e) => { state.innerScale = parseInt(e.target.value, 10); document.getElementById('scale-val').textContent = `${state.innerScale}%`; updateUI(); };
+    document.getElementById('bg-color-input').oninput = (e) => { state.bgColor = e.target.value; updateUI(); };
+
+    document.getElementById('paper-size-select').onchange = (e) => {
+      state.paperKey = e.target.value;
+      document.getElementById('custom-paper-box').classList.toggle('hidden', state.paperKey !== 'custom');
+      updateUI();
+    };
+    document.getElementById('custom-w-input').oninput = (e) => { state.customW = Math.max(30, parseFloat(e.target.value) || 210); updateUI(); };
+    document.getElementById('custom-h-input').oninput = (e) => { state.customH = Math.max(30, parseFloat(e.target.value) || 297); updateUI(); };
+
+    document.getElementById('orient-portrait').onclick = () => { state.orientation = 'portrait'; updateOrientButtons(); updateUI(); };
+    document.getElementById('orient-landscape').onclick = () => { state.orientation = 'landscape'; updateOrientButtons(); updateUI(); };
+    function updateOrientButtons() {
+      const pBtn = document.getElementById('orient-portrait'), lBtn = document.getElementById('orient-landscape');
+      pBtn.className = state.orientation === 'portrait' ? 'orient-btn bg-sky-500/20 border border-sky-400 text-sky-300 rounded-xl p-2.5 text-xs font-semibold' : 'orient-btn bg-slate-800/70 border border-slate-700 text-slate-300 rounded-xl p-2.5 text-xs font-semibold';
+      lBtn.className = state.orientation === 'landscape' ? 'orient-btn bg-sky-500/20 border border-sky-400 text-sky-300 rounded-xl p-2.5 text-xs font-semibold' : 'orient-btn bg-slate-800/70 border border-slate-700 text-slate-300 rounded-xl p-2.5 text-xs font-semibold';
+    }
+
+    document.getElementById('zoom-in').onclick = () => { state.zoom = Math.min(2.5, +(state.zoom + 0.25).toFixed(2)); document.getElementById('zoom-label').textContent = `${Math.round(state.zoom * 100)}%`; updateUI(); };
+    document.getElementById('zoom-out').onclick = () => { state.zoom = Math.max(0.5, +(state.zoom - 0.25).toFixed(2)); document.getElementById('zoom-label').textContent = `${Math.round(state.zoom * 100)}%`; updateUI(); };
+    document.getElementById('zoom-fit').onclick = () => { state.zoom = 1; document.getElementById('zoom-label').textContent = '100%'; updateUI(); };
+
+    function generatePdfBlob() {
+      const { jsPDF } = window.jspdf;
+      const hiResCanvas = document.createElement('canvas');
+      const { paper } = renderSheet(hiResCanvas, 300);
+      const pdf = new jsPDF({ orientation: state.orientation, unit: 'mm', format: [paper.w, paper.h], compress: true });
+      const imgData = hiResCanvas.toDataURL('image/jpeg', 0.96);
+      pdf.addImage(imgData, 'JPEG', 0, 0, paper.w, paper.h, undefined, 'FAST');
+      return pdf;
+    }
+
+    document.getElementById('export-pdf-btn').onclick = () => {
+      const pdf = generatePdfBlob();
+      pdf.save(`${state.imgName}_${state.rows}x${state.cols}.pdf`);
+    };
+
+    function exportRaster(mime, ext) {
+      const hiResCanvas = document.createElement('canvas');
+      renderSheet(hiResCanvas, 300);
+      const link = document.createElement('a');
+      link.download = `${state.imgName}_${state.rows}x${state.cols}_300dpi.${ext}`;
+      link.href = hiResCanvas.toDataURL(mime, 0.95);
+      link.click();
+    }
+    document.getElementById('export-png-btn').onclick = () => exportRaster('image/png', 'png');
+    document.getElementById('export-jpg-btn').onclick = () => exportRaster('image/jpeg', 'jpg');
+
+    document.getElementById('share-btn').onclick = async () => {
+      const pdf = generatePdfBlob();
+      const blob = pdf.output('blob');
+      const file = new File([blob], `${state.imgName}_PrintGrid.pdf`, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'PrintGrid Studio' });
+      } else {
+        pdf.save(`${state.imgName}_PrintGrid.pdf`);
+      }
+    };
+
+    document.getElementById('print-btn').onclick = () => {
+      const hiResCanvas = document.createElement('canvas');
+      renderSheet(hiResCanvas, 300);
+      document.getElementById('print-img').src = hiResCanvas.toDataURL('image/png');
+      setTimeout(() => window.print(), 150);
+    };
+
+    window.addEventListener('resize', updateUI);
+    buildPresets();
+    updateUI();
+  </script>
+</body>
+</html>
